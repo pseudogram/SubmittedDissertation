@@ -2,13 +2,17 @@ import tensorflow as tf
 import numpy as np
 import functools
 
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
+
 # ------------------------------------------------------------------------------
 # Generic Functions for making layers
 # ------------------------------------------------------------------------------
 
-def variable_summaries(var,name):
+def variable_summaries(var):
     """Attach a lot of summaries to a Tensor (for TensorBoard visualization)."""
-    with tf.name_scope('{}_summaries'.format(name)):
+    with tf.name_scope('summaries'):
         mean = tf.reduce_mean(var)
         tf.summary.scalar('mean', mean)
         with tf.name_scope('stddev'):
@@ -129,33 +133,28 @@ class NARX:
         # self.error
 
     # Currently retruns all values between -1 and 1
-    def feed_forward_net(self, x):
+    def feed_forward_net(self, x, name):
         # Hidden layers
         layers = [x]
         for i in range(len(self.hidden_layers)):
-            # TODO: convert below into a dictionary input so can be modified
-            # elsewhere
             layer_name = 'h_{}'.format(i)
-            layers.append(tf.layers.dense(layers[i], self.hidden_layers[i],
-                                          activation=tf.nn.tanh,
-                                          use_bias=True ,
-                                          name=layer_name,
-                                          reuse=tf.AUTO_REUSE))
-            # TODO: Add var variable summary here
-            # Used this temoraryva
-            if self.__ffn__ == 1: variable_summaries(layers[-1],layer_name)
+            layers.append(tf.layers.dense(layers[i], name=layer_name,
+                                          **self.hidden_layers[i]))
+            variable_summaries(layers[-1])
 
         # Prediction
         y_pred = tf.layers.dense(layers[-1], self.y.shape[1],
-                           activation=tf.nn.tanh)
-        if self.__ffn__ == 1: variable_summaries(y_pred,'y_pred')
+                                 name='y_pred', activation=tf.nn.tanh,
+                                 reuse=tf.AUTO_REUSE)
+        variable_summaries(y_pred)
         return y_pred
 
     # SERIES-PARALLEL
     @lazy_property
     def predict_spara(self):
         # pedict using concatenated queues
-        return self.feed_forward_net(self.x_0)
+        with tf.name_scope('series_parallel'):
+            return self.feed_forward_net(self.x_0, 'series_parallel')
 
     @define_scope
     def cost(self):
@@ -170,6 +169,20 @@ class NARX:
         return optimizer.minimize(self.cost)
 
     # PARALLEL
+    @define_scope
+    def queue_x_1(self):
+        with tf.name_scope('x_1_enqueue'):
+            x_1_split = tf.split(self.x_1_queue, self.queue_size, 1)
+            x_1_split.append(self.x_1)
+            return self.x_1_queue.assign(tf.concat(x_1_split[1:], 1))
+
+    @define_scope
+    def queue_x_2(self):
+        with tf.name_scope('x_2_enqueue'):
+            x_2_split = tf.split(self.x_2_queue, self.queue_size, 1)
+            x_2_split.append(self.x_2)
+            return self.x_2_queue.assign(tf.concat(x_2_split[1:], 1))
+
     @define_scope
     def enqueue(self):
         # TODO: monitor loss in tensorboard
@@ -191,7 +204,8 @@ class NARX:
     @lazy_property
     def predict_para( self ):
         # pedict using concatenated queues
-        return self.feed_forward_net(self.queue)
+        with tf.name_scope('parallel'):
+            return self.feed_forward_net(self.queue, 'parallel')
 
     #Todo: add an op to clear the queues
     def reset(self):

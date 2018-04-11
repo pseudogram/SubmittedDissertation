@@ -36,7 +36,7 @@ def main ():
         for i in range(len(_x1)):
             _ = sess.run(nn.enqueue,feed_dict={x_1:_x1[[i],:],x_2:_x2[[i],:]})
             print(_)
-            print(sess.run(nn.predict_para))
+            print(sess.run(nn.optimizer))
             print()
 
         writer.close()
