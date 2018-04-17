@@ -187,15 +187,8 @@ class NARX:
     def enqueue(self):
         # TODO: monitor loss in tensorboard
         with tf.name_scope('enqueue'):
-            with tf.name_scope('x_1_enqueue'):
-                x_1_split = tf.split(self.x_1_queue, self.queue_size, 1)
-                x_1_split.append(self.x_1)
-                x_1_con = self.x_1_queue.assign(tf.concat(x_1_split[1:],1))
-
-            with tf.name_scope('x_2_enqueue'):
-                x_2_split = tf.split(self.x_2_queue, self.queue_size, 1)
-                x_2_split.append(self.x_2)
-                x_2_con = self.x_2_queue.assign(tf.concat(x_2_split[1:],1))
+            x_1_con = self.queue_x_1
+            x_2_con = self.queue_x_2
 
 
             concat = tf.concat([x_1_con,x_2_con], 1)
