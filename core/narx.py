@@ -116,7 +116,7 @@ class NARX:
                                              initializer=tf.zeros([1,x_2.shape[
                                                  1]*queue_size]))
             self.queue = tf.get_variable('narx_queue',
-                                         initializer=tf.zeros([1, queue_dim]),
+                                         initializer=tf.zeros([1,queue_dim]),
                                          dtype=tf.float32)
             self.enqueue
 
@@ -130,6 +130,7 @@ class NARX:
 
         self.cost
         self.optimizer
+        self.queue_dim = queue_dim
         # self.error
 
     # Currently retruns all values between -1 and 1
@@ -205,4 +206,5 @@ class NARX:
         """Just run sess.run(narx.reset())"""
         x_1 = self.x_1_queue.assign(tf.zeros(self.x_1_queue.shape))
         x_2 = self.x_2_queue.assign(tf.zeros(self.x_2_queue.shape))
-        return x_1, x_2
+        queue = self.queue.assign(tf.zeros(self.queue.shape))
+        return x_1, x_2, queue

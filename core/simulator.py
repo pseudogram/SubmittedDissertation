@@ -3,7 +3,7 @@ import random
 import gym
 import tensorflow as tf
 import numpy as np
-from narx import NARX
+from core.narx import NARX
 import math
 
 import os
@@ -50,7 +50,17 @@ class Simulator(gym.Env):
         self.merged = tf.summary.merge_all()
 
         self.sess.run(tf.global_variables_initializer())
-        pass
+
+        self.prev_ob = None
+        self.steps_passed = 0
+
+        #TODO: Scale down and up inputs for narx using function.
+        # self.obs_kernel = np.array()
+
+        # For comaptibility with sota agent
+        self.action_space = env.action_space
+        self.action_space = env.action_space
+
 
     def _format_buffer(self, replay_buffer):
         rb = np.array(replay_buffer)
@@ -66,23 +76,21 @@ class Simulator(gym.Env):
         p_actions = []
         n_observation = []
         rewards = []
+
         i = 0
-        while i < len(replay_buffer):
-            # if done is within prev history, skip position of pointer
-            if i > len(replay_buffer) - self.history + 1:
-                break
+        while i < len(replay_buffer) - self.history + 2:
+            # If done is within the history catchment area, shift buffer window
             if replay_buffer[i+self.history-2][4]:
                 i += self.history - 1
-
                 continue
             else:
                 p_observations.append(
                     np.array([replay_buffer[i + m][0] for m in range(
-                        self.history-1,-1,-1)]).reshape(-1))
+                        self.history)]).reshape(-1))
 
                 p_actions.append(
                     np.array([replay_buffer[i + m][1] for m in range(
-                        self.history-1,-1,-1)]).reshape(-1))
+                        self.history)]).reshape(-1))
 
                 n_observation.append(replay_buffer[i + self.history-1][2])
 
@@ -96,7 +104,6 @@ class Simulator(gym.Env):
 
         return p_observations, p_actions, n_observation, rewards
 
-
     def train(self, replay_buffer, batch_size=32, epochs=1, seed=None,
               verbose=0):
         """replay_buffer = history of (prev_observation, action, observation,
@@ -106,37 +113,37 @@ class Simulator(gym.Env):
             self._format_buffer(replay_buffer)
 
         random.seed(seed)
-        # Create batch list
+        # ----------------------------------------------------------------------
+        # Create Training Data for network
+        # ----------------------------------------------------------------------
         shuffle = []
         buff_inds = range(prev_obs.shape[0])
         if len(replay_buffer) >= batch_size:
             shuffle += random.sample(buff_inds, len(buff_inds))
         remainder = len(replay_buffer) % batch_size
 
-        print('training data %s' % len(shuffle))
-        print('remainder %s' % remainder)
+        # print('training data %s' % len(shuffle))
+        # print('remainder %s' % remainder)
         if remainder:
             shuffle += random.sample(buff_inds, batch_size - remainder)
 
 
         x = np.concatenate([prev_act,prev_obs],1)
-        print('size of x %s' % str(x.shape))
+        # print('size of x %s' % str(x.shape))
         y = next_obs
 
         # train model
         model = self.narx
         iterations = int((len(shuffle) / batch_size)-1)
-        print('training data %s' % len(shuffle))
-        print('batchsize %s' % batch_size)
-        print('iterations %s' % iterations)
+        # print('training data %s' % len(shuffle))
+        # print('batchsize %s' % batch_size)
+        # print('iterations %s' % iterations)
 
         for epoch in range(epochs):
             for batch in range(iterations):
                 start = batch * batch_size
                 fin = (batch+1) * batch_size
                 inds = shuffle[start:fin]
-                print(max(shuffle))
-                print(inds)
                 tboard, _ = self.sess.run([self.merged, self.narx.optimizer],
                                           feed_dict={model.x_0: x[inds, :],
                                                      model.y: y[inds, :]})
@@ -145,7 +152,7 @@ class Simulator(gym.Env):
         if verbose:
             print('Done finished sleep cycle')
 
-    def angle_normalize( x ):
+    def angle_normalize(self, x):
         return (((x + np.pi) % (2 * np.pi)) - np.pi)
 
     def _reward(self, observation, u):
@@ -155,7 +162,10 @@ class Simulator(gym.Env):
         :param u: action
         :return: reward
         """
-        cos_theta, sin_theta, thdot = observation
+        cos_theta, sin_theta, thdot = observation.reshape(-1)
+        print(cos_theta)
+        print(sin_theta)
+        print(thdot)
         c_theta = np.arccos(cos_theta)
         s_theta = np.arcsin(sin_theta)
         th = np.average([c_theta, s_theta])
@@ -163,9 +173,6 @@ class Simulator(gym.Env):
         cost = self.angle_normalize(th) ** 2 + .1 * thdot ** 2 + .001 * (u ** 2)
 
         return -cost
-
-    def reset(self):
-        pass
 
     def normalise(self, action=None, observation=None):
         if action is not None:
@@ -181,12 +188,13 @@ class Simulator(gym.Env):
             observation = observation * np.array([1, 1, 8])
         return action, observation
 
-    def load_starting_queue(self):
+    def load_starting_queue(self, q):
         """Load the first 5 iterations from a real environment and then
         continue"""
-        pass
+        print(self.narx.queue.shape)
+        self.sess.run(self.narx.queue.assign(q))
 
-    def step(self, action, iteration):
+    def step(self, action):
         if self.steps_passed > 200:
             done = False
         elif self.steps_passed > 201:
@@ -201,25 +209,29 @@ class Simulator(gym.Env):
                                              observation=self.prev_ob)
 
         _ = self.sess.run(self.narx.enqueue, feed_dict={
-            nn.x_1:observation, nn.x_2:action})
+            nn.x_1: action, nn.x_2: observation})
 
         next_observation = self.sess.run(nn.predict_para)
         self.prev_ob = next_observation
         self.steps_passed += 1
 
-        return next_observation, reward, done
+        return next_observation, reward, done, None
 
     def reset(self):
         """must feed prev ob back into netowrk"""
+        self.sess.run(self.narx.reset())
         high = np.array([np.pi, 1])
         # state = self.np_random.uniform(low=-high, high=high)
         th, thdot = np.random.uniform(-high,high)
         c_th = np.cos(th)
         s_th = np.sin(th)
         start_ob = np.array([c_th, s_th, thdot])[None]
-        no_motor = np.array([0])[None]
-        self.sess.run(self.narx.enqueue,feed_dict={self.narx.x_1:start_ob,
-                                                   self.narx.x_2:no_motor})
+        # no_motor = np.array([0])[None]
+        # self.sess.run(self.narx.enqueue, feed_dict={self.narx.x_1: no_motor,
+        #                                             self.narx.x_2: start_ob})
         self.prev_ob = start_ob
         self.steps_passed = 0
         return start_ob
+
+    def close(self):
+        pass

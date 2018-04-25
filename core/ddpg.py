@@ -26,10 +26,10 @@ env_to_use = 'Pendulum-v0'
 
 # hyperparameters
 gamma = 0.99  # reward discount factor
-h1_actor = 8  # hidden layer 1 size for the actor
+h1_actor = 8 # hidden layer 1 size for the actor
 h2_actor = 8  # hidden layer 2 size for the actor
 h3_actor = 8  # hidden layer 3 size for the actor
-h1_critic = 8  # hidden layer 1 size for the critic
+h1_critic = 8 # hidden layer 1 size for the critic
 h2_critic = 8  # hidden layer 2 size for the critic
 h3_critic = 8  # hidden layer 3 size for the critic
 lr_actor = 1e-3  # learning rate for the actor
@@ -59,8 +59,8 @@ action_dim = np.prod(
     np.array(env.action_space.shape))  # Assuming continuous action space
 
 # set seeds to 0
-env.seed(0)
-np.random.seed(0)
+# env.seed(0)
+# np.random.seed(0)
 
 # prepare monitorings
 outdir = '/tmp/ddpg-agent-results'
